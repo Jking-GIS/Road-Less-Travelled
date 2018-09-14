@@ -19,7 +19,6 @@ import android.support.v7.widget.SearchView;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -79,8 +78,6 @@ public class MapActivity extends AppCompatActivity {
     private GraphicsOverlay mPastOverlay;
     private GraphicsOverlay mPinsOverlay;
 
-    private boolean startupLocate = true;
-
     private static Route mRoute;
     private static RouteParameters mRouteParameters;
     private static RouteTask mRouteTask;
@@ -113,17 +110,6 @@ public class MapActivity extends AppCompatActivity {
         public AuthenticationChallengeResponse handleChallenge(AuthenticationChallenge challenge) {
             return new AuthenticationChallengeResponse(
                     AuthenticationChallengeResponse.Action.CONTINUE_WITH_CREDENTIAL, mPortal.getCredential());
-        }
-    }
-
-    private class LocationChanged implements LocationDisplay.LocationChangedListener {
-        @Override
-        public void onLocationChanged(LocationDisplay.LocationChangedEvent location) {
-            /*if(startupLocate) {
-                Viewpoint viewPoint = new Viewpoint(location.getLocation().getPosition(), 10000);
-                mMapView.getMap().setInitialViewpoint(viewPoint);
-                startupLocate = false;
-            }*/
         }
     }
 
@@ -193,6 +179,10 @@ public class MapActivity extends AppCompatActivity {
 
         backgroundService = new Intent(this, BackgroundService.class);
 
+        if (!canAccessLocation()) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+        }
+
         DefaultAuthenticationChallengeHandler handler = new DefaultAuthenticationChallengeHandler(this);
         AuthenticationManager.setAuthenticationChallengeHandler(handler);
         mPortal = new Portal(getString(R.string.portal_url), true);
@@ -234,7 +224,7 @@ public class MapActivity extends AppCompatActivity {
 
             mLocationDisplay = mMapView.getLocationDisplay();
             mLocationDisplay.setAutoPanMode(LocationDisplay.AutoPanMode.RECENTER);
-            mLocationDisplay.addLocationChangedListener(new LocationChanged());
+            mLocationDisplay.startAsync();
 
             mRouteTask = new RouteTask(getApplicationContext(), "http://route.arcgis.com/arcgis/rest/services/World/Route/NAServer/Route_World");
             final ListenableFuture<RouteParameters> listenableFuture = mRouteTask.createDefaultParametersAsync();
@@ -261,12 +251,6 @@ public class MapActivity extends AppCompatActivity {
                             SimpleMarkerSymbol.Style.CIRCLE, Color.GREEN, 20)));
                 }
             });
-
-            if (!canAccessLocation()) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-            }else {
-                mLocationDisplay.startAsync();
-            }
 
             mRouteOverlays = new ArrayList<>();
             mPinsOverlay = new GraphicsOverlay();
