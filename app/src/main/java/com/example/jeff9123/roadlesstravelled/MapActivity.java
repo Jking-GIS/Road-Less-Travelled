@@ -177,6 +177,8 @@ public class MapActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.map_activity);
 
+        setupButtons();
+
         backgroundService = new Intent(this, BackgroundService.class);
 
         if (!canAccessLocation()) {
@@ -264,6 +266,25 @@ public class MapActivity extends AppCompatActivity {
         Log.d(TAG, "Main activity created");
     }
 
+    @SuppressLint("ClickableViewAccessibility")
+    private void setupButtons() {
+        findViewById(R.id.routeMeButton).setOnTouchListener((v, event) -> {
+            v.setBackgroundColor(0xFF6432c8);
+            //v.performClick();
+            return false;
+        });
+        findViewById(R.id.serviceButton).setOnTouchListener((v, event) -> {
+            v.setBackgroundColor(0xFF6432c8);
+            //v.performClick();
+            return false;
+        });
+        findViewById(R.id.toggleSearchButton).setOnTouchListener((v, event) -> {
+            v.setBackgroundColor(0xFF6432c8);
+            //v.performClick();
+            return false;
+        });
+    }
+
     private void identifyGraphic(MotionEvent motionEvent) {
         android.graphics.Point screenPoint = new android.graphics.Point(Math.round(motionEvent.getX()),
                 Math.round(motionEvent.getY()));
@@ -309,11 +330,13 @@ public class MapActivity extends AppCompatActivity {
             queryHint = getResources().getString(R.string.address_fromsearch_hint);
         }
 
-        Button toggleSearchButton = findViewById(R.id.toggleSearchButton);
+        Button toggleSearchButton = (Button)view;
         toggleSearchButton.setText(searchType_str);
         mAddressSearchView.setQueryHint(queryHint);
         mAddressSearchView.setQuery("", false);
         refreshStartEndGraphics(false);
+
+        toggleSearchButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
     }
 
     private void geoCodeTypedAddress(final String address, final SearchType searchType) {
@@ -444,18 +467,20 @@ public class MapActivity extends AppCompatActivity {
     }
 
     public void startTracking(View view) {
+        Button serviceButton = (Button)view;
+
         if(tracking) {
             tracking = false;
-            Button serviceButton = findViewById(R.id.serviceButton);
             serviceButton.setText(R.string.start_location_tracking);
             stopService(backgroundService);
         }else {
             tracking = true;
-            Button serviceButton = findViewById(R.id.serviceButton);
             serviceButton.setText(R.string.stop_location_tracking);
             ((MyApplication) this.getApplication()).setLocationDisplay(mLocationDisplay);
             startService(backgroundService);
         }
+
+        serviceButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
     }
 
     private static boolean routeMe() {
@@ -559,5 +584,7 @@ public class MapActivity extends AppCompatActivity {
                 && startPoint != null && endPoint != null) {
             new routeMeASyncTask(this).execute();
         }
+
+        view.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
     }
 }
