@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context=".MapActivity">
+
+    <com.esri.arcgisruntime.mapping.view.MapView
+        android:id="@+id/mapView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1.0">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="40dp">
+
+            <include layout="@layout/loading_spinner"/>
+
+            <android.support.v7.widget.SearchView
+                android:id="@+id/searchView"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:layout_marginStart="5dp"
+                android:layout_marginEnd="5dp"
+                android:layout_marginTop="5dp"
+                android:background="@color/colorWhiteSemiTransparent"
+                android:queryHint="@string/address_fromsearch_hint" />
+
+            <ImageButton
+                android:id="@+id/locateButton"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentEnd="true"
+                android:layout_marginTop="60dp"
+                android:layout_marginEnd="5dp"
+                android:onClick="locateMe"
+                android:src="@drawable/locate_icon"
+                android:scaleType="fitCenter"
+                android:background="#00000000"
+                android:contentDescription="@string/locate_me_button" />
+
+            <Button
+                android:id="@+id/toggleSearchButton"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentStart="true"
+                android:layout_marginTop="60dp"
+                android:layout_marginStart="5dp"
+                android:background="@color/colorPrimaryDark"
+                android:onClick="toggleSearch"
+                android:text="@string/route_from"
+                android:textColor="@color/colorAccent"/>
+
+            <Button
+                android:id="@+id/routeMeButton"
+                android:layout_width="100dp"
+                android:layout_height="50dp"
+                android:background="@color/colorPrimaryDark"
+                android:onClick="routeMe"
+                android:text="@string/route_me"
+                android:textColor="@color/colorAccent"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentStart="true"
+                android:layout_marginTop="5dp"
+                android:layout_marginBottom="30dp"
+                android:layout_marginLeft="5dp"
+                android:layout_marginRight="5dp"/>
+
+            <Button
+                android:id="@+id/serviceButton"
+                android:layout_width="100dp"
+                android:layout_height="50dp"
+                android:background="@color/colorPrimaryDark"
+                android:onClick="startTracking"
+                android:text="@string/start_location_tracking"
+                android:textColor="@color/colorAccent"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentEnd="true"
+                android:layout_marginTop="5dp"
+                android:layout_marginBottom="30dp"
+                android:layout_marginLeft="5dp"
+                android:layout_marginRight="5dp"/>
+        </RelativeLayout>
+    </com.esri.arcgisruntime.mapping.view.MapView>
+
+</LinearLayout>
