@@ -17,6 +17,7 @@ import android.support.v4.widget.SimpleCursorAdapter;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.SearchView;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
@@ -55,6 +56,7 @@ import com.esri.arcgisruntime.tasks.geocode.GeocodeResult;
 import com.esri.arcgisruntime.tasks.geocode.LocatorTask;
 import com.esri.arcgisruntime.tasks.geocode.SuggestResult;
 import com.esri.arcgisruntime.tasks.networkanalysis.BarrierType;
+import com.esri.arcgisruntime.tasks.networkanalysis.DirectionManeuver;
 import com.esri.arcgisruntime.tasks.networkanalysis.PointBarrier;
 import com.esri.arcgisruntime.tasks.networkanalysis.Route;
 import com.esri.arcgisruntime.tasks.networkanalysis.RouteParameters;
@@ -72,7 +74,7 @@ public class MapActivity extends AppCompatActivity {
 
     public MapView getMapView() { return mMapView; }
     private MapView mMapView;
-    private LocationDisplay mLocationDisplay;
+    private static LocationDisplay mLocationDisplay;
 
     private static List<GraphicsOverlay> mRouteOverlays;
     private GraphicsOverlay mPastOverlay;
@@ -81,11 +83,11 @@ public class MapActivity extends AppCompatActivity {
     private static Route mRoute;
     private static RouteParameters mRouteParameters;
     private static RouteTask mRouteTask;
-    private static Point startPoint;
     private static Point endPoint;
 
     private static LocationRepository mLocationRepository;
     private static List<Location> mBarLocations;
+    private static List<Location> mPastLocations;
 
     private SearchView mAddressSearchView;
     private GeocodeParameters mAddressGeocodeParameters;
@@ -96,9 +98,6 @@ public class MapActivity extends AppCompatActivity {
 
     private Intent backgroundService;
     private boolean tracking = false;
-
-    private enum SearchType{ SEARCH_FROM, SEARCH_TO }
-    private SearchType searchType = SearchType.SEARCH_FROM;
 
     private final String COLUMN_NAME_ADDRESS = "address";
     private final String[] mColumnNames = { BaseColumns._ID, COLUMN_NAME_ADDRESS };
@@ -117,7 +116,7 @@ public class MapActivity extends AppCompatActivity {
 
         @Override
         public boolean onQueryTextSubmit(String address) {
-            geoCodeTypedAddress(address, searchType);
+            geoCodeTypedAddress(address);
             mAddressSearchView.clearFocus();
             return true;
         }
@@ -160,12 +159,11 @@ public class MapActivity extends AppCompatActivity {
                         Log.e(TAG, "Geocode suggestion error: " + e.getMessage());
                     }
                 });
-            }else if(searchType == SearchType.SEARCH_FROM) {
-                startPoint = null;
-                refreshStartEndGraphics(false);
-            }else if(searchType == SearchType.SEARCH_TO){
+            }else {
                 endPoint = null;
                 refreshStartEndGraphics(false);
+                clearRoutes();
+                mLocationRepository.deleteAllLike("bar");
             }
             return true;
         }
@@ -197,15 +195,16 @@ public class MapActivity extends AppCompatActivity {
             mAddressSearchView.setIconified(false);
             mAddressSearchView.setFocusable(false);
             mAddressSearchView.clearFocus();
-            mAddressSearchView.setQueryHint(getResources().getString(R.string.address_fromsearch_hint));
+            mAddressSearchView.setQueryHint(getString(R.string.address_search_hint));
 
             BitmapDrawable pinDrawable = (BitmapDrawable) ContextCompat.getDrawable(this, R.drawable.pin);
             try {
-                assert pinDrawable != null;
-                mPinSourceSymbol = PictureMarkerSymbol.createAsync(pinDrawable).get();
+                if(pinDrawable != null) {
+                    mPinSourceSymbol = PictureMarkerSymbol.createAsync(pinDrawable).get();
+                }
             } catch (InterruptedException | ExecutionException e) {
                 Log.e(TAG, "Picture Marker Symbol error: " + e.getMessage());
-                Toast.makeText(getApplicationContext(), "Failed to load pin drawable.", Toast.LENGTH_LONG).show();
+                showToast("Failed to load pin drawable.");
             }
             // set pin to half of native size
             mPinSourceSymbol.setWidth(19f);
@@ -244,13 +243,17 @@ public class MapActivity extends AppCompatActivity {
             mLocationRepository = new LocationRepository(getApplication());
             mLocationRepository.getBarLocations().observe(this, locations -> mBarLocations = locations);
             mLocationRepository.getPastLocations().observe(this, locations -> {
+                mPastLocations = locations;
                 mPastOverlay.getGraphics().clear();
-                for (int x = 0; x < (locations != null ? locations.size() : 0); x++) {
-                    Point p = CoordinateFormatter.fromLatitudeLongitude(
-                            locations.get(x).getLatitude()+","+locations.get(x).getLongitude(),
-                            null);
-                    mPastOverlay.getGraphics().add(new Graphic(p, new SimpleMarkerSymbol(
-                            SimpleMarkerSymbol.Style.CIRCLE, Color.GREEN, 20)));
+                if(locations != null) {
+                    int start = (locations.size() >= 5) ? (locations.size() - 5) : 0;
+                    for (int x = start; x < locations.size(); x++) {
+                        Point p = CoordinateFormatter.fromLatitudeLongitude(
+                                locations.get(x).getLatitude() + "," + locations.get(x).getLongitude(),
+                                null);
+                        mPastOverlay.getGraphics().add(new Graphic(p, new SimpleMarkerSymbol(
+                                SimpleMarkerSymbol.Style.CIRCLE, Color.GREEN, 20)));
+                    }
                 }
             });
 
@@ -278,7 +281,12 @@ public class MapActivity extends AppCompatActivity {
             //v.performClick();
             return false;
         });
-        findViewById(R.id.toggleSearchButton).setOnTouchListener((v, event) -> {
+        findViewById(R.id.clearTrackedButton).setOnTouchListener((v, event) -> {
+            v.setBackgroundColor(0xFF6432c8);
+            //v.performClick();
+            return false;
+        });
+        findViewById(R.id.clearRoutesButton).setOnTouchListener((v, event) -> {
             v.setBackgroundColor(0xFF6432c8);
             //v.performClick();
             return false;
@@ -315,31 +323,7 @@ public class MapActivity extends AppCompatActivity {
         mAddressSearchView.setOnQueryTextListener(new SearchViewListener());
     }
 
-    public void toggleSearch(View view) {
-        String queryHint;
-        String searchType_str;
-        if(searchType == SearchType.SEARCH_FROM) {
-            searchType = SearchType.SEARCH_TO;
-            searchType_str = getString(R.string.route_to);
-            endPoint = null;
-            queryHint = getResources().getString(R.string.address_tosearch_hint);
-        }else {
-            searchType = SearchType.SEARCH_FROM;
-            searchType_str = getString(R.string.route_from);
-            startPoint = null;
-            queryHint = getResources().getString(R.string.address_fromsearch_hint);
-        }
-
-        Button toggleSearchButton = (Button)view;
-        toggleSearchButton.setText(searchType_str);
-        mAddressSearchView.setQueryHint(queryHint);
-        mAddressSearchView.setQuery("", false);
-        refreshStartEndGraphics(false);
-
-        toggleSearchButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
-    }
-
-    private void geoCodeTypedAddress(final String address, final SearchType searchType) {
+    private void geoCodeTypedAddress(final String address) {
         if (address != null) {
             mLocatorTask.addDoneLoadingListener(() -> {
                 if (mLocatorTask.getLoadStatus() == LoadStatus.LOADED) {
@@ -349,15 +333,13 @@ public class MapActivity extends AppCompatActivity {
                         try {
                             List<GeocodeResult> geocodeResults = geocodeResultListenableFuture.get();
                             if (geocodeResults.size() > 0) {
-                                displaySearchResult(geocodeResults.get(0), searchType);
+                                displaySearchResult(geocodeResults.get(0));
                             } else {
-                                Toast.makeText(getApplicationContext(), getString(R.string.location_not_found) + address,
-                                        Toast.LENGTH_LONG).show();
+                                showToast(getString(R.string.location_not_found));
                             }
                         } catch (InterruptedException | ExecutionException e) {
                             Log.e(TAG, "Geocode error: " + e.getMessage());
-                            Toast.makeText(getApplicationContext(), getString(R.string.geo_locate_error), Toast.LENGTH_LONG)
-                                    .show();
+                            showToast(getString(R.string.geo_locate_error));
                         }
                     });
                 } else {
@@ -369,40 +351,25 @@ public class MapActivity extends AppCompatActivity {
         }
     }
 
-    private void displaySearchResult(GeocodeResult geocodeResult, final SearchType searchType) {
+    private void displaySearchResult(GeocodeResult geocodeResult) {
         if (mMapView.getCallout() != null && mMapView.getCallout().isShowing()) {
             mMapView.getCallout().dismiss();
         }
 
-        if(searchType == SearchType.SEARCH_FROM) {
-            startPoint = geocodeResult.getDisplayLocation();
-        }else if(searchType == SearchType.SEARCH_TO) {
-            endPoint = geocodeResult.getDisplayLocation();
-        }
-
+        endPoint = geocodeResult.getDisplayLocation();
         mGeocodeResult = geocodeResult;
         refreshStartEndGraphics(true);
     }
 
     private void refreshStartEndGraphics(boolean zoomTo) {
         mPinsOverlay.getGraphics().clear();
-        if(startPoint != null) {
-            Graphic startLocGraphic = new Graphic(startPoint, mGeocodeResult.getAttributes(), mPinSourceSymbol);
-            mPinsOverlay.getGraphics().add(startLocGraphic);
-        }
         if(endPoint != null) {
             Graphic endLocGraphic = new Graphic(endPoint, mGeocodeResult.getAttributes(), mPinSourceSymbol);
             mPinsOverlay.getGraphics().add(endLocGraphic);
         }
 
-        if(zoomTo) {
-            if (startPoint != null && endPoint != null) {
-                mMapView.setViewpointAsync(new Viewpoint(new Envelope(startPoint, endPoint)));
-            } else if (startPoint != null) {
-                mMapView.setViewpointAsync(new Viewpoint(startPoint, 10000));
-            } else if (endPoint != null){
-                mMapView.setViewpointAsync(new Viewpoint(endPoint, 10000));
-            }
+        if(zoomTo && endPoint != null) {
+            mMapView.setViewpointAsync(new Viewpoint(new Envelope(mLocationDisplay.getLocation().getPosition(), endPoint)));
         }
 
     }
@@ -432,9 +399,12 @@ public class MapActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            mLocationDisplay.startAsync();
+            //mLocationDisplay.startAsync();
         } else {
-            Toast.makeText(MapActivity.this, "location denied", Toast.LENGTH_SHORT).show();
+            showToast("Location denied.");
+            if (!canAccessLocation()) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+            }
         }
     }
 
@@ -458,12 +428,18 @@ public class MapActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         if(mMapView != null){ mMapView.dispose(); }
+        mLocationRepository.deleteAllLike("bar");
 
         Log.d(TAG, "Main activity destroyed");
     }
 
     public void locateMe(View view) {
-        mLocationDisplay.setAutoPanMode(LocationDisplay.AutoPanMode.RECENTER);
+        mLocationDisplay.setAutoPanMode(LocationDisplay.AutoPanMode.NAVIGATION);
+    }
+
+    public void clearTracked(View view) {
+        mLocationRepository.deleteAllLike("past");
+        view.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
     }
 
     public void startTracking(View view) {
@@ -485,10 +461,17 @@ public class MapActivity extends AppCompatActivity {
 
     private static boolean routeMe() {
         List<PointBarrier> pointBarriers = new ArrayList<>();
-        for (int x = 0; x < mBarLocations.size(); x++) {
+        for (int x=0; x<mBarLocations.size(); x++) {
             Point p = new Point(mBarLocations.get(x).getLongitude(), mBarLocations.get(x).getLatitude());
             PointBarrier pb = new PointBarrier(p);
-            pb.setAddedCost(mRouteParameters.getTravelMode().getImpedanceAttributeName(), 60.0);
+            pb.setAddedCost(mRouteParameters.getTravelMode().getImpedanceAttributeName(), 1.0);
+            pb.setType(BarrierType.COST_ADJUSTMENT);
+            pointBarriers.add(pb);
+        }
+        for (int x=0; x<mPastLocations.size(); x++) {
+            Point p = new Point(mPastLocations.get(x).getLongitude(), mPastLocations.get(x).getLatitude());
+            PointBarrier pb = new PointBarrier(p);
+            pb.setAddedCost(mRouteParameters.getTravelMode().getImpedanceAttributeName(), 1.0);
             pb.setType(BarrierType.COST_ADJUSTMENT);
             pointBarriers.add(pb);
         }
@@ -497,8 +480,12 @@ public class MapActivity extends AppCompatActivity {
 
         List<Stop> stops = new ArrayList<>();
         try {
-            stops.add(new Stop(startPoint));
-            stops.add(new Stop(endPoint));
+            Stop currentLoc = new Stop(mLocationDisplay.getLocation().getPosition());
+            currentLoc.setName("current location");
+            stops.add(currentLoc);
+            Stop destination = new Stop(endPoint);
+            destination.setName("destination");
+            stops.add(destination);
         }catch(Exception e) {
             e.printStackTrace();
             return false;
@@ -506,6 +493,7 @@ public class MapActivity extends AppCompatActivity {
 
         mRouteParameters.setStops(stops);
         mRouteParameters.setReturnDirections(true);
+        mRouteParameters.setReturnStops(true);
 
         RouteResult result;
         try {
@@ -516,11 +504,21 @@ public class MapActivity extends AppCompatActivity {
         }
         final List<Route> routes = result.getRoutes();
         mRoute = routes.get(0);
+        Log.d(TAG, "Directions size: " + mRoute.getDirectionManeuvers().size());
+        for(int x=0; x<mRoute.getDirectionManeuvers().size(); x++) {
+            DirectionManeuver dm = mRoute.getDirectionManeuvers().get(x);
+            Log.d(TAG, dm.getDirectionText());
+        }
+        Log.d(TAG, "Stop size: " + mRoute.getStops().size());
+        for(int x=0; x<mRoute.getStops().size(); x++) {
+            Stop s = mRoute.getStops().get(x);
+            Log.d(TAG, s.getName());
+        }
 
         int ptct = mRoute.getRouteGeometry().getParts().get(0).getPointCount();
         float lowerHalf = ptct / 2;
         float upperHalf = lowerHalf;
-        int resolution = 10;
+        int resolution = 30;
         for (int x = 0; x < (resolution / 2); x++) {
             Point lowerMidPoint = mRoute.getRouteGeometry().getParts().get(0).getPoint((int) lowerHalf);
             Point upperMidPoint = mRoute.getRouteGeometry().getParts().get(0).getPoint((int) upperHalf);
@@ -579,12 +577,39 @@ public class MapActivity extends AppCompatActivity {
         }
     }
 
+    public void clearRoutes() {
+        for(int x=0; x<mRouteOverlays.size(); x++) {
+            mRouteOverlays.get(x).getGraphics().clear();
+        }
+        mRouteOverlays.clear();
+        Button routeButton = findViewById(R.id.routeMeButton);
+        routeButton.setText(R.string.route_me);
+    }
+
+    public void clearRoutes(View view) {
+        mAddressSearchView.setQuery("", true);
+        Button clearRoutesButton = findViewById(R.id.clearRoutesButton);
+        clearRoutesButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
+    }
+
     public void routeMe(View view) {
-        if(findViewById(R.id.loadingSpinner).getVisibility() == View.GONE
-                && startPoint != null && endPoint != null) {
+        Button routeButton = (Button)view;
+
+        if(findViewById(R.id.loadingSpinner).getVisibility() == View.GONE && endPoint != null) {
             new routeMeASyncTask(this).execute();
+            routeButton.setText(R.string.route_again);
+        }else if(endPoint == null) {
+            showToast("You must enter an address.");
+        }else {
+            showToast("Routing in progress, try again.");
         }
 
-        view.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
+        routeButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
+    }
+
+    public void showToast(String str) {
+        Toast toast = Toast.makeText(getApplicationContext(), str, Toast.LENGTH_LONG);
+        toast.setGravity(Gravity.CENTER, 0, 0);
+        toast.show();
     }
 }

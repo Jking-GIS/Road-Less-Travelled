@@ -40,7 +40,7 @@ public class BackgroundService extends Service {
 
                     LocationRepository mRepository = new LocationRepository(getApplication());
                     while(running) {
-                        TimeUnit.SECONDS.sleep(1);
+                        TimeUnit.SECONDS.sleep(60);
                         Location mLocation = new Location("past " + System.currentTimeMillis(),
                                 mLocationDisplay.getLocation().getPosition().getY(),
                                 mLocationDisplay.getLocation().getPosition().getX());

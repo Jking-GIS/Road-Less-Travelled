@@ -33,4 +33,7 @@ public interface LocationDao {
 
     @Query("DELETE FROM location_table")
     void deleteAll();
+
+    @Query("DELETE FROM location_table WHERE location LIKE :loc")
+    void deleteAllLike(String loc);
 }

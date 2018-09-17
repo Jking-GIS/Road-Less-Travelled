@@ -44,6 +44,21 @@ public class LocationRepository {
             return null;
         }
     }
+
+    public void deleteAllLike(String loc) { new deleteAllLikeASyncTask(mLocationDao).execute(loc); }
+    private static class deleteAllLikeASyncTask extends AsyncTask<String, Void, Void> {
+        private LocationDao mAsyncTaskDao;
+
+        deleteAllLikeASyncTask(LocationDao dao) {
+            mAsyncTaskDao = dao;
+        }
+
+        @Override
+        protected Void doInBackground(final String... params) {
+            mAsyncTaskDao.deleteAllLike("%" + params[0] + "%");
+            return null;
+        }
+    }
 }
 
 

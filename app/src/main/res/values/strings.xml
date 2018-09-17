@@ -6,7 +6,10 @@
 
     <string name="start_location_tracking">Start Tracking</string>
     <string name="stop_location_tracking">Stop Tracking</string>
+    <string name="clear_tracked_data">Clear Tracked Data</string>
     <string name="route_me">Route Me</string>
+    <string name="clear_routes">Clear Routes</string>
+    <string name="route_again">Route Me Again</string>
     <string name="route_from">from</string>
     <string name="route_to">to</string>
 
@@ -25,8 +28,7 @@
     <string name="get_thumbnail_error">Error getting user thumbnail:</string>
     <string name="authenticate_error">User did not authenticate against </string>
 
-    <string name="address_fromsearch_hint">Enter starting address</string>
-    <string name="address_tosearch_hint">Enter ending address</string>
+    <string name="address_search_hint">Enter address to navigate to</string>
     <string name="geo_locate_error">Geocode failed on address.</string>
     <string name="location_not_found">No location with that name: </string>
 
