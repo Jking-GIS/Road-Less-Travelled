@@ -34,15 +34,51 @@
                 android:id="@+id/locateButton"
                 android:layout_width="50dp"
                 android:layout_height="50dp"
-                android:layout_alignParentTop="true"
+                android:layout_below="@id/searchView"
                 android:layout_alignParentEnd="true"
-                android:layout_marginTop="60dp"
+                android:layout_marginTop="5dp"
                 android:layout_marginEnd="5dp"
                 android:onClick="locateMe"
                 android:src="@drawable/locate_icon"
                 android:scaleType="fitCenter"
                 android:background="#00000000"
                 android:contentDescription="@string/locate_me_button" />
+
+            <TextView
+                android:id="@+id/directionsText"
+                android:layout_toStartOf="@id/locateButton"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/searchView"
+                android:layout_alignParentStart="true"
+                android:layout_marginTop="5dp"
+                android:layout_marginStart="5dp"
+                android:layout_marginEnd="5dp"
+                android:layout_width="0dp"
+                android:background="#7d00c800"
+                android:visibility="gone"
+                android:text=""
+                android:padding="5dp"
+                android:paddingStart="15dp"
+                android:paddingEnd="15dp"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/approachingDirectionsText"
+                android:layout_toStartOf="@id/locateButton"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/directionsText"
+                android:layout_alignParentStart="true"
+                android:layout_marginTop="5dp"
+                android:layout_marginStart="5dp"
+                android:layout_marginEnd="5dp"
+                android:layout_width="0dp"
+                android:background="#7dfafa00"
+                android:visibility="gone"
+                android:text=""
+                android:padding="5dp"
+                android:paddingStart="15dp"
+                android:paddingEnd="15dp"
+                android:textSize="22sp" />
 
             <Button
                 android:id="@+id/clearRoutesButton"

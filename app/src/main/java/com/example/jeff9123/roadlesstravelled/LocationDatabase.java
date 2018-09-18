@@ -49,6 +49,7 @@ public abstract class LocationDatabase extends RoomDatabase {
 
         @Override
         protected Void doInBackground(final Void... params) {
+            mDao.deleteAllLike("%bar%");
             return null;
         }
     }
