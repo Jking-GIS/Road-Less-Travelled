@@ -25,7 +25,12 @@ public class LocationRepository {
     LiveData<List<Location>> getPastLocations() { return mPastLocations; }
 
     boolean locationNotExists(String loc) {
-        return (mLocationDao.findByLocation_notLive(loc).size() <= 0);
+        Location location = mLocationDao.findLocation(loc);
+        if(location == null) {
+            return true;
+        }else {
+            return false;
+        }
     }
 
     public void insert(Location location) {

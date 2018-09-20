@@ -19,6 +19,9 @@ public interface LocationDao {
     @Query("SELECT * FROM location_table WHERE location LIKE :loc")
     List<Location> findByLocation_notLive(String loc);
 
+    @Query("SELECT * FROM location_table WHERE location = :loc LIMIT 1")
+    Location findLocation(String loc);
+
     @Query("SELECT * FROM location_table WHERE latitude LIKE :lat AND longitude LIKE :lon LIMIT 1")
     Location findByLatLon(double lat, double lon);
 

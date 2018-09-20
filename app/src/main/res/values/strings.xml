@@ -35,4 +35,5 @@
     <string name="appbar_scrolling_view_behavior" translatable="false">android.support.design.widget.AppBarLayout$ScrollingViewBehavior</string>
     <string name="locate_me_button">locate me button</string>
     <string name="no_location">No Location</string>
+    <string name="navigation_button_desc">change navigation between locked up and free</string>
 </resources>

@@ -44,6 +44,20 @@
                 android:background="#00000000"
                 android:contentDescription="@string/locate_me_button" />
 
+            <ImageButton
+                android:id="@+id/navigateButton"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_below="@id/locateButton"
+                android:layout_alignParentEnd="true"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="5dp"
+                android:onClick="changeNavigation"
+                android:src="@drawable/navigate_icon"
+                android:scaleType="fitCenter"
+                android:background="#00000000"
+                android:contentDescription="@string/navigation_button_desc" />
+
             <TextView
                 android:id="@+id/directionsText"
                 android:layout_toStartOf="@id/locateButton"
@@ -82,63 +96,61 @@
 
             <Button
                 android:id="@+id/clearRoutesButton"
-                android:layout_width="125dp"
-                android:layout_height="50dp"
-                android:background="@color/colorPrimaryDark"
+                android:layout_width="100dp"
+                android:layout_height="wrap_content"
+                android:background="@color/colorAccent"
                 android:onClick="clearRoutes"
                 android:text="@string/clear_routes"
-                android:textColor="@color/colorAccent"
-                android:layout_alignParentBottom="true"
+                android:layout_above="@id/routeMeButton"
                 android:layout_alignParentStart="true"
                 android:layout_marginTop="5dp"
-                android:layout_marginBottom="85dp"
+                android:layout_marginBottom="5dp"
                 android:layout_marginLeft="5dp"
-                android:layout_marginRight="5dp"/>
+                android:layout_marginRight="5dp"
+                android:padding="5dp"/>
 
             <Button
                 android:id="@+id/routeMeButton"
-                android:layout_width="125dp"
-                android:layout_height="50dp"
-                android:background="@color/colorPrimaryDark"
+                android:layout_width="100dp"
+                android:layout_height="wrap_content"
+                android:background="@color/colorPrimaryLight"
                 android:onClick="routeMe"
                 android:text="@string/route_me"
-                android:textColor="@color/colorAccent"
                 android:layout_alignParentBottom="true"
                 android:layout_alignParentStart="true"
-                android:layout_marginTop="5dp"
                 android:layout_marginBottom="30dp"
                 android:layout_marginLeft="5dp"
-                android:layout_marginRight="5dp"/>
+                android:layout_marginRight="5dp"
+                android:padding="5dp"/>
 
             <Button
                 android:id="@+id/clearTrackedButton"
-                android:layout_width="125dp"
-                android:layout_height="50dp"
-                android:background="@color/colorPrimaryDark"
+                android:layout_width="100dp"
+                android:layout_height="wrap_content"
+                android:background="@color/colorAccent"
                 android:onClick="clearTracked"
                 android:text="@string/clear_tracked_data"
-                android:textColor="@color/colorAccent"
-                android:layout_alignParentBottom="true"
+                android:layout_above="@id/serviceButton"
                 android:layout_alignParentEnd="true"
                 android:layout_marginTop="5dp"
-                android:layout_marginBottom="85dp"
+                android:layout_marginBottom="5dp"
                 android:layout_marginLeft="5dp"
-                android:layout_marginRight="5dp"/>
+                android:layout_marginRight="5dp"
+                android:padding="5dp"/>
 
             <Button
                 android:id="@+id/serviceButton"
-                android:layout_width="125dp"
-                android:layout_height="50dp"
-                android:background="@color/colorPrimaryDark"
+                android:layout_width="100dp"
+                android:layout_height="wrap_content"
+                android:background="@color/colorPrimaryLight"
                 android:onClick="startTracking"
                 android:text="@string/start_location_tracking"
-                android:textColor="@color/colorAccent"
                 android:layout_alignParentBottom="true"
                 android:layout_alignParentEnd="true"
-                android:layout_marginTop="5dp"
                 android:layout_marginBottom="30dp"
                 android:layout_marginLeft="5dp"
-                android:layout_marginRight="5dp"/>
+                android:layout_marginRight="5dp"
+                android:padding="5dp"/>
         </RelativeLayout>
     </com.esri.arcgisruntime.mapping.view.MapView>
 

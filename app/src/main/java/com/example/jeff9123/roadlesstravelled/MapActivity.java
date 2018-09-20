@@ -21,15 +21,18 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.esri.arcgisruntime.ArcGISRuntimeEnvironment;
 import com.esri.arcgisruntime.concurrent.ListenableFuture;
+import com.esri.arcgisruntime.geometry.AngularUnit;
+import com.esri.arcgisruntime.geometry.AngularUnitId;
 import com.esri.arcgisruntime.geometry.CoordinateFormatter;
-import com.esri.arcgisruntime.geometry.Envelope;
 import com.esri.arcgisruntime.geometry.GeodeticCurveType;
+import com.esri.arcgisruntime.geometry.GeodeticDistanceResult;
 import com.esri.arcgisruntime.geometry.GeometryEngine;
 import com.esri.arcgisruntime.geometry.GeometryType;
 import com.esri.arcgisruntime.geometry.LinearUnit;
@@ -82,17 +85,19 @@ public class MapActivity extends AppCompatActivity {
 
     public MapView getMapView() { return mMapView; }
     private MapView mMapView;
-    private static LocationDisplay mLocationDisplay;
+    private LocationDisplay mLocationDisplay;
+    private List<Point> lastKnownLocations;
+    private boolean locatingEnabled = false;
 
-    private static List<GraphicsOverlay> mRouteOverlays;
+    private List<GraphicsOverlay> mRouteOverlays;
     private GraphicsOverlay mPastOverlay;
     private GraphicsOverlay mPinsOverlay;
     private GraphicsOverlay mDirectionOverlay;
 
-    private static Route mRoute;
     private static RouteParameters mRouteParameters;
     private static RouteTask mRouteTask;
-    private static Point endPoint;
+    private Point endPoint;
+    private boolean routingBusy = false;
 
     private List<DirectionManeuver> mDirectionManeuvers;
     private Polygon currentDirectionBuffer;
@@ -101,6 +106,7 @@ public class MapActivity extends AppCompatActivity {
     private Timer directionTimer;
     private boolean directionTimerWaiting = false;
     private int lostNavigationCounter = 0;
+    private boolean navigationLockedUp = false;
 
     private static LocationRepository mLocationRepository;
     private static List<Location> mBarLocations;
@@ -129,16 +135,17 @@ public class MapActivity extends AppCompatActivity {
         backgroundService = new Intent(this, BackgroundService.class);
         directionTimer = new Timer("direction_timer");
         mDirectionManeuvers = new ArrayList<>();
+        lastKnownLocations = new ArrayList<>();
         mLocatorTask = new LocatorTask("http://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer");
-
-        if (!canAccessLocation()) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-        }
 
         DefaultAuthenticationChallengeHandler handler = new DefaultAuthenticationChallengeHandler(this);
         AuthenticationManager.setAuthenticationChallengeHandler(handler);
         mPortal = new Portal(getString(R.string.portal_url), true);
         mPortal.addDoneLoadingListener(() -> {
+            if (!canAccessLocation()) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+            }
+
             PortalInfo portalInfo = mPortal.getPortalInfo();
             ArcGISRuntimeEnvironment.setLicense(portalInfo.getLicenseInfo());
             AuthenticationManager.setAuthenticationChallengeHandler(new ChallengeHandler());
@@ -184,7 +191,9 @@ public class MapActivity extends AppCompatActivity {
     @SuppressLint("ClickableViewAccessibility")
     private void setupMap() {
         mMapView = findViewById(R.id.mapView);
-        ArcGISMap map = new ArcGISMap(Basemap.Type.TOPOGRAPHIC, 34.056295, -117.195800, 16);
+        double lon = -117.195800;
+        double lat = 34.056295;
+        ArcGISMap map = new ArcGISMap(Basemap.Type.TOPOGRAPHIC, lat, lon, 16);
         mMapView.setMap(map);
         ((MyApplication)this.getApplication()).setMapView(mMapView);
 
@@ -199,7 +208,6 @@ public class MapActivity extends AppCompatActivity {
 
     private void setupTracking() {
         mLocationDisplay = mMapView.getLocationDisplay();
-        mLocationDisplay.setAutoPanMode(LocationDisplay.AutoPanMode.RECENTER);
         mLocationDisplay.startAsync();
         mLocationDisplay.addLocationChangedListener(new LocationChangedListener(this));
     }
@@ -231,7 +239,7 @@ public class MapActivity extends AppCompatActivity {
                             locations.get(x).getLatitude() + "," + locations.get(x).getLongitude(),
                             null);
                     mPastOverlay.getGraphics().add(new Graphic(p, new SimpleMarkerSymbol(
-                            SimpleMarkerSymbol.Style.CIRCLE, Color.GREEN, 20)));
+                            SimpleMarkerSymbol.Style.X, Color.BLACK, 20)));
                 }
             }
         });
@@ -294,6 +302,8 @@ public class MapActivity extends AppCompatActivity {
             Graphic endLocGraphic = new Graphic(endPoint, mGeocodeResult.getAttributes(), mPinSourceSymbol);
             mPinsOverlay.getGraphics().add(endLocGraphic);
             if(zoomTo) {
+                locatingEnabled = false;
+                ((ImageButton)findViewById(R.id.locateButton)).setImageResource(R.drawable.locate_icon);
                 mMapView.setViewpointAsync(new Viewpoint(endPoint, 10000));
             }
         }
@@ -418,7 +428,7 @@ public class MapActivity extends AppCompatActivity {
             findViewById(R.id.directionsText).setVisibility(View.VISIBLE);
             currentDirectionBuffer = GeometryEngine.bufferGeodetic(
                     currentManeuver.getGeometry(),
-                    300,
+                    150,
                     new LinearUnit(LinearUnitId.FEET),
                     5.0,
                     GeodeticCurveType.GEODESIC);
@@ -439,6 +449,15 @@ public class MapActivity extends AppCompatActivity {
         }
     }
 
+    public void changeNavigation(View view) {
+        navigationLockedUp = !navigationLockedUp;
+        if(navigationLockedUp) {
+            ((ImageButton)findViewById(R.id.navigateButton)).setImageResource(R.drawable.navigate_icon_enabled);
+        }else {
+            ((ImageButton)findViewById(R.id.navigateButton)).setImageResource(R.drawable.navigate_icon);
+        }
+    }
+
     //--- TRACKING FUNCTIONS ---
 
     private boolean canAccessLocation() {
@@ -452,22 +471,27 @@ public class MapActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            //mLocationDisplay.startAsync();
+            mLocationDisplay.startAsync();
         } else {
             showToast("Location denied.");
-            if (!canAccessLocation()) {
+            /*if (!canAccessLocation()) {
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-            }
+            }*/
         }
     }
 
     public void locateMe(View view) {
-        mLocationDisplay.setAutoPanMode(LocationDisplay.AutoPanMode.NAVIGATION);
+        locatingEnabled = !locatingEnabled;
+        if(locatingEnabled) {
+            ((ImageButton)findViewById(R.id.locateButton)).setImageResource(R.drawable.locate_icon_enabled);
+        }else {
+            ((ImageButton)findViewById(R.id.locateButton)).setImageResource(R.drawable.locate_icon);
+        }
     }
 
     public void clearTracked(View view) {
         mLocationRepository.deleteAllLike("past");
-        view.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
+        view.setBackgroundColor(getResources().getColor(R.color.colorAccent));
     }
 
     public void startTracking(View view) {
@@ -484,7 +508,7 @@ public class MapActivity extends AppCompatActivity {
             startService(backgroundService);
         }
 
-        serviceButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
+        serviceButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryLight));
     }
 
     //--- MISC FUNCTIONS ---
@@ -524,8 +548,8 @@ public class MapActivity extends AppCompatActivity {
     public void routeMe(View view) {
         Button routeButton = (Button)view;
 
-        if(findViewById(R.id.loadingSpinner).getVisibility() == View.GONE && endPoint != null) {
-            new routeMeASyncTask(this).execute(false);
+        if(findViewById(R.id.loadingSpinner).getVisibility() == View.GONE && endPoint != null && !routingBusy) {
+            new routeMeASyncTask(this).execute(new RouteTaskParams(mLocationDisplay.getLocation().getPosition(), endPoint, false));
             routeButton.setText(R.string.route_again);
         }else if(endPoint == null) {
             showToast("You must enter an address.");
@@ -533,10 +557,14 @@ public class MapActivity extends AppCompatActivity {
             showToast("Routing in progress, try again.");
         }
 
-        routeButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
+        routeButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryLight));
     }
 
-    private static boolean routeMe(boolean reroute) {
+    private static RouteTaskReturns routeMe(RouteTaskParams params) {
+        Point startPoint = params.startPoint;
+        Point endPoint = params.endPoint;
+        boolean reroute = params.reroute;
+
         List<PointBarrier> pointBarriers = new ArrayList<>();
         for (int x=0; x<mBarLocations.size(); x++) {
             Point p = new Point(mBarLocations.get(x).getLongitude(), mBarLocations.get(x).getLatitude());
@@ -559,7 +587,8 @@ public class MapActivity extends AppCompatActivity {
 
         List<Stop> stops = new ArrayList<>();
         try {
-            Stop currentLoc = new Stop(mLocationDisplay.getLocation().getPosition());
+            Stop currentLoc = new Stop(startPoint);
+            //Stop currentLoc = new Stop(mLocationDisplay.getLocation().getPosition());
             currentLoc.setName("current location");
             stops.add(currentLoc);
             Stop destination = new Stop(endPoint);
@@ -567,7 +596,7 @@ public class MapActivity extends AppCompatActivity {
             stops.add(destination);
         }catch(Exception e) {
             e.printStackTrace();
-            return false;
+            return new RouteTaskReturns(null, false);
         }
 
         mRouteParameters.setStops(stops);
@@ -579,18 +608,22 @@ public class MapActivity extends AppCompatActivity {
             result = mRouteTask.solveRouteAsync(mRouteParameters).get();
         } catch (ExecutionException | InterruptedException e) {
             e.printStackTrace();
-            return false;
+            return new RouteTaskReturns(null, false);
         }
         final List<Route> routes = result.getRoutes();
-        mRoute = routes.get(0);
+        Route route = routes.get(0);
 
-        int ptct = mRoute.getRouteGeometry().getParts().get(0).getPointCount();
+        int ptct = route.getRouteGeometry().getParts().get(0).getPointCount();
+        int resolution = 30;
+        if(ptct < resolution) {
+            resolution = ptct;
+        }
         float lowerHalf = ptct / 2;
         float upperHalf = lowerHalf;
-        int resolution = 30;
+
         for (int x = 0; x < (resolution / 2); x++) {
-            Point lowerMidPoint = mRoute.getRouteGeometry().getParts().get(0).getPoint((int) lowerHalf);
-            Point upperMidPoint = mRoute.getRouteGeometry().getParts().get(0).getPoint((int) upperHalf);
+            Point lowerMidPoint = route.getRouteGeometry().getParts().get(0).getPoint((int) lowerHalf);
+            Point upperMidPoint = route.getRouteGeometry().getParts().get(0).getPoint((int) upperHalf);
             lowerHalf = lowerHalf - ptct / resolution;
             upperHalf = upperHalf + ptct / resolution;
             Location lowerLocation = new Location("bar lower " + System.currentTimeMillis(), lowerMidPoint.getY(), lowerMidPoint.getX());
@@ -612,51 +645,88 @@ public class MapActivity extends AppCompatActivity {
             }
         }
 
-        return true;
+        return new RouteTaskReturns(route, true);
     }
 
-    private static class routeMeASyncTask extends AsyncTask<Boolean, Void, Boolean> {
+    private static class RouteTaskParams {
+        Point startPoint;
+        Point endPoint;
+        boolean reroute;
+
+        RouteTaskParams(Point startPoint, Point endPoint, boolean reroute) {
+            this.startPoint = startPoint;
+            this.endPoint = endPoint;
+            this.reroute = reroute;
+        }
+    }
+
+    private static class RouteTaskReturns {
+        boolean success;
+        Route route;
+
+        RouteTaskReturns(Route route, boolean success) {
+            this.route = route;
+            this.success = success;
+        }
+    }
+
+    private static class routeMeASyncTask extends AsyncTask<RouteTaskParams, Void, RouteTaskReturns> {
         WeakReference<MapActivity> mWeakActivity;
+        RouteTaskParams mRouteTaskParams;
 
         routeMeASyncTask(MapActivity activity) {
             mWeakActivity = new WeakReference<>(activity);
         }
 
         @Override
-        protected Boolean doInBackground(final Boolean... params) {
-            return routeMe(params[0]);
+        protected RouteTaskReturns doInBackground(final RouteTaskParams... params) {
+            mRouteTaskParams = params[0];
+            return routeMe(mRouteTaskParams);
         }
 
         @Override
         protected void onPreExecute() {
+            mWeakActivity.get().routingBusy = true;
             ProgressBar loadingSpinner = mWeakActivity.get().findViewById(R.id.loadingSpinner);
             loadingSpinner.setVisibility(View.VISIBLE);
         }
 
         @Override
-        protected void onPostExecute(Boolean result) {
-            for (int x = 0; x < mRouteOverlays.size(); x++) {
-                mWeakActivity.get().getMapView().getGraphicsOverlays().remove(mRouteOverlays.get(x));
-                //mRouteOverlays.get(x).setOpacity(mRouteOverlays.get(x).getOpacity() / 2); ADD THIS BACK IN IF YOU WANT TO SHOW OLD ROUTES WITH TRANSPARENCY
-                //mWeakActivity.get().getMapView().getGraphicsOverlays().add(0, mRouteOverlays.get(x)); ^^^
+        protected void onPostExecute(RouteTaskReturns result) {
+            if(result.success) {
+                for (int x = 0; x < mWeakActivity.get().mRouteOverlays.size(); x++) {
+                    mWeakActivity.get().getMapView().getGraphicsOverlays().remove(mWeakActivity.get().mRouteOverlays.get(x));
+                    //mRouteOverlays.get(x).setOpacity(mRouteOverlays.get(x).getOpacity() / 2); ADD THIS BACK IN IF YOU WANT TO SHOW OLD ROUTES WITH TRANSPARENCY
+                    //mWeakActivity.get().getMapView().getGraphicsOverlays().add(0, mRouteOverlays.get(x)); ^^^
+                }
+                GraphicsOverlay routeOverlay = new GraphicsOverlay();
+                routeOverlay.getGraphics().add(
+                        new Graphic(result.route.getRouteGeometry(),
+                                new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, Color.RED, 8)));
+                mWeakActivity.get().mRouteOverlays.add(routeOverlay);
+                mWeakActivity.get().getMapView().getGraphicsOverlays().add(0,
+                        mWeakActivity.get().mRouteOverlays.get(mWeakActivity.get().mRouteOverlays.size() - 1));
+
+                if(!mRouteTaskParams.reroute) {
+                    Viewpoint viewPoint = new Viewpoint(result.route.getRouteGeometry().getExtent());
+                    mWeakActivity.get().getMapView().setViewpointAsync(viewPoint, 3);
+                    new Timer().schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            mWeakActivity.get().routingBusy = false;
+                        }
+                    }, 5000);
+                }else{
+                    mWeakActivity.get().routingBusy = false;
+                }
+
+                mWeakActivity.get().mDirectionManeuvers = result.route.getDirectionManeuvers();
+                mWeakActivity.get().directionsIndex = 0;
+                mWeakActivity.get().nextDirection();
+
+                ProgressBar loadingSpinner = mWeakActivity.get().findViewById(R.id.loadingSpinner);
+                loadingSpinner.setVisibility(View.GONE);
             }
-            GraphicsOverlay routeOverlay = new GraphicsOverlay();
-            routeOverlay.getGraphics().add(
-                    new Graphic(mRoute.getRouteGeometry(),
-                            new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, Color.RED, 8)));
-            mRouteOverlays.add(routeOverlay);
-            mWeakActivity.get().getMapView().getGraphicsOverlays().add(0, mRouteOverlays.get(mRouteOverlays.size() - 1));
-
-            //Viewpoint viewPoint = new Viewpoint(mRoute.getRouteGeometry().getExtent());
-            //mWeakActivity.get().getMapView().setViewpointAsync(viewPoint);
-            mLocationDisplay.setAutoPanMode(LocationDisplay.AutoPanMode.NAVIGATION);
-
-            mWeakActivity.get().mDirectionManeuvers = mRoute.getDirectionManeuvers();
-            mWeakActivity.get().directionsIndex = 0;
-            mWeakActivity.get().nextDirection();
-
-            ProgressBar loadingSpinner = mWeakActivity.get().findViewById(R.id.loadingSpinner);
-            loadingSpinner.setVisibility(View.GONE);
         }
     }
 
@@ -666,6 +736,7 @@ public class MapActivity extends AppCompatActivity {
         }
         mRouteOverlays.clear();
         mDirectionOverlay.getGraphics().clear();
+        directionsIndex = 0;
         ((TextView) findViewById(R.id.approachingDirectionsText)).setText("");
         findViewById(R.id.approachingDirectionsText).setVisibility(View.GONE);
         ((TextView)findViewById(R.id.directionsText)).setText("");
@@ -676,7 +747,7 @@ public class MapActivity extends AppCompatActivity {
     public void clearRoutes(View view) {
         mAddressSearchView.setQuery("", true);
         Button clearRoutesButton = findViewById(R.id.clearRoutesButton);
-        clearRoutesButton.setBackgroundColor(getResources().getColor(R.color.colorPrimaryDark));
+        clearRoutesButton.setBackgroundColor(getResources().getColor(R.color.colorAccent));
     }
 
     //--- CLASSES ---
@@ -753,26 +824,75 @@ public class MapActivity extends AppCompatActivity {
 
         @Override
         public void onLocationChanged(LocationDisplay.LocationChangedEvent locationChangedEvent) {
-            if(directionsIndex != 0) {
+            if(directionsIndex != 0 && currentDirectionBuffer != null && nextDirectionBuffer != null) {
                 boolean contains = GeometryEngine.contains(currentDirectionBuffer, locationChangedEvent.getLocation().getPosition());
-                boolean nextContains = GeometryEngine.contains(nextDirectionBuffer, locationChangedEvent.getLocation().getPosition());
+                boolean nextContains;
                 if(!contains) {
                     lostNavigationCounter++;
-                    if((lostNavigationCounter > 2) && (lostNavigationCounter <= 5) && nextContains) {
+                    nextContains = GeometryEngine.contains(nextDirectionBuffer, locationChangedEvent.getLocation().getPosition());
+                    if (nextContains && lostNavigationCounter > 2) {
                         lostNavigationCounter = 0;
+                        nextDirectionBuffer = null;
                         nextDirection();
-                    }else if(lostNavigationCounter > 5) {
+                    } else if (lostNavigationCounter > 5) {
                         lostNavigationCounter = 0;
-                        if (findViewById(R.id.loadingSpinner).getVisibility() == View.GONE
+                        if (findViewById(R.id.loadingSpinner).getVisibility() == View.GONE && !routingBusy
                                 && endPoint != null && !directionTimerWaiting) {
-                            new routeMeASyncTask(mMapActivity).execute(true);
+                            new routeMeASyncTask(mMapActivity).execute(new RouteTaskParams(locationChangedEvent.getLocation().getPosition(), endPoint, true));
                             startTimer();
                         }
                     }
-                }else if(nextContains) {
+                }else {
+                    lostNavigationCounter = 0;
+                }
+
+                nextContains = GeometryEngine.contains(nextDirectionBuffer, locationChangedEvent.getLocation().getPosition());
+                if(nextContains) {
                     approachingNextDirection();
                 }
             }
+
+            if(findViewById(R.id.loadingSpinner).getVisibility() == View.GONE
+                    && !routingBusy && locatingEnabled) {
+                this.locate();
+            }
+
+            if(lastKnownLocations.size() > 5) {
+                lastKnownLocations.remove(0);
+            }
+            lastKnownLocations.add(locationChangedEvent.getLocation().getPosition());
+        }
+
+        private void locate() {
+            Point lastAvgLocation = null;
+            if(lastKnownLocations.size() > 0) {
+                double avgX = 0; double avgY = 0;
+                for (int x = 0; x < lastKnownLocations.size(); x++) {
+                    avgX += lastKnownLocations.get(x).getX();
+                    avgY += lastKnownLocations.get(x).getY();
+                }
+                avgX = avgX / lastKnownLocations.size();
+                avgY = avgY / lastKnownLocations.size();
+
+                lastAvgLocation = new Point(avgX, avgY, mLocationDisplay.getLocation().getPosition().getSpatialReference());
+            }
+
+            double rotation = 0;
+            if(navigationLockedUp && lastAvgLocation != null) {
+                GeodeticDistanceResult geodeticDistanceResult = GeometryEngine.distanceGeodetic(mLocationDisplay.getLocation().getPosition(),
+                        lastAvgLocation,
+                        new LinearUnit(LinearUnitId.FEET),
+                        new AngularUnit(AngularUnitId.DEGREES),
+                        GeodeticCurveType.GEODESIC);
+                rotation = geodeticDistanceResult.getAzimuth2();
+                if (rotation < 0) {
+                    rotation = 360 + rotation;
+                }
+            }
+            mMapView.setViewpointAsync(new Viewpoint(
+                    mLocationDisplay.getLocation().getPosition(),
+                    10000,
+                    rotation));
         }
     }
 }
