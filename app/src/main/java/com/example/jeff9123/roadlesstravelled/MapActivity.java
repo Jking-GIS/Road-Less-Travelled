@@ -141,21 +141,31 @@ public class MapActivity extends AppCompatActivity {
         DefaultAuthenticationChallengeHandler handler = new DefaultAuthenticationChallengeHandler(this);
         AuthenticationManager.setAuthenticationChallengeHandler(handler);
         mPortal = new Portal(getString(R.string.portal_url), true);
-        mPortal.addDoneLoadingListener(() -> {
-            if (!canAccessLocation()) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-            }
+        mPortal.addLoadStatusChangedListener(loadStatusChangedEvent -> {
+            if(loadStatusChangedEvent.getNewLoadStatus() == LoadStatus.LOADED) {
+                Log.d(TAG, "Portal Loaded");
+                if (!canAccessLocation()) {
+                    ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+                }
 
-            PortalInfo portalInfo = mPortal.getPortalInfo();
-            ArcGISRuntimeEnvironment.setLicense(portalInfo.getLicenseInfo());
-            AuthenticationManager.setAuthenticationChallengeHandler(new ChallengeHandler());
-            setupPinGraphic();
-            setupMap();
-            setupTracking();
-            setupRouting();
-            setupLocationRepository();
-            setupGraphics();
-            setupAddressSearchView();
+                PortalInfo portalInfo = mPortal.getPortalInfo();
+                ArcGISRuntimeEnvironment.setLicense(portalInfo.getLicenseInfo());
+                AuthenticationManager.setAuthenticationChallengeHandler(new ChallengeHandler());
+                setupPinGraphic();
+                setupMap();
+                setupTracking();
+                setupRouting();
+                setupLocationRepository();
+                setupGraphics();
+                setupAddressSearchView();
+            }else if(loadStatusChangedEvent.getNewLoadStatus() == LoadStatus.FAILED_TO_LOAD) {
+                Log.d(TAG, "Portal Failed to Load");
+                mPortal.retryLoadAsync();
+            }else if(loadStatusChangedEvent.getNewLoadStatus() == LoadStatus.NOT_LOADED) {
+                Log.d(TAG, "Portal not Loaded");
+            }else if(loadStatusChangedEvent.getNewLoadStatus() == LoadStatus.LOADING) {
+                Log.d(TAG, "Portal Loading");
+            }
         });
         mPortal.loadAsync();
 
@@ -386,41 +396,41 @@ public class MapActivity extends AppCompatActivity {
     //--- NAVIGATION FUNCTIONS ---
 
     public void approachingNextDirection() {
-        DirectionManeuver nextManeuver = mDirectionManeuvers.get(directionsIndex+1);
-        ((TextView) findViewById(R.id.approachingDirectionsText)).setText(nextManeuver.getDirectionText());
-        findViewById(R.id.approachingDirectionsText).setVisibility(View.VISIBLE);
-        Graphic directionGraphic;
-        if (nextManeuver.getGeometry().getGeometryType() == GeometryType.POINT) {
-            directionGraphic = new Graphic(nextManeuver.getGeometry(),
-                    new SimpleMarkerSymbol(SimpleMarkerSymbol.Style.X, Color.YELLOW, 5));
-        } else if (nextManeuver.getGeometry().getGeometryType() == GeometryType.POLYLINE) {
-            directionGraphic = new Graphic(nextManeuver.getGeometry(),
-                    new SimpleLineSymbol(SimpleLineSymbol.Style.DASH, Color.YELLOW, 5));
-        } else {
-            directionGraphic = new Graphic();
+        if(directionsIndex >= mDirectionManeuvers.size()-2) {
+            mAddressSearchView.setQuery("", true);
+        }else {
+            DirectionManeuver nextManeuver = mDirectionManeuvers.get(directionsIndex + 1);
+            ((TextView) findViewById(R.id.approachingDirectionsText)).setText(nextManeuver.getDirectionText());
+            findViewById(R.id.approachingDirectionsText).setVisibility(View.VISIBLE);
+            Graphic directionGraphic;
+            if (nextManeuver.getGeometry().getGeometryType() == GeometryType.POINT) {
+                directionGraphic = new Graphic(nextManeuver.getGeometry(),
+                        new SimpleMarkerSymbol(SimpleMarkerSymbol.Style.X, Color.YELLOW, 5));
+            } else if (nextManeuver.getGeometry().getGeometryType() == GeometryType.POLYLINE) {
+                directionGraphic = new Graphic(nextManeuver.getGeometry(),
+                        new SimpleLineSymbol(SimpleLineSymbol.Style.DASH, Color.YELLOW, 5));
+            } else {
+                directionGraphic = new Graphic();
+            }
+            mDirectionOverlay.getGraphics().add(directionGraphic);
         }
-        mDirectionOverlay.getGraphics().add(directionGraphic);
     }
 
     public void nextDirection() {
         if(++directionsIndex < mDirectionManeuvers.size()) {
             DirectionManeuver currentManeuver = mDirectionManeuvers.get(directionsIndex);
             if(directionsIndex < mDirectionManeuvers.size()) {
+                double dist = 2500;
+                if(directionsIndex == mDirectionManeuvers.size()-2) {
+                    dist = 500;
+                }
                 DirectionManeuver nextManeuver = mDirectionManeuvers.get(directionsIndex+1);
                 nextDirectionBuffer = GeometryEngine.bufferGeodetic(
                         nextManeuver.getGeometry(),
-                        1000,
+                        dist,
                         new LinearUnit(LinearUnitId.FEET),
                         5.0,
                         GeodeticCurveType.GEODESIC);
-            }else {// you're at your destination
-                directionsIndex = 0;
-                mDirectionOverlay.getGraphics().clear();
-                mAddressSearchView.setQuery("", true);
-                ((TextView) findViewById(R.id.approachingDirectionsText)).setText("");
-                findViewById(R.id.approachingDirectionsText).setVisibility(View.GONE);
-                ((TextView) findViewById(R.id.directionsText)).setText("");
-                findViewById(R.id.directionsText).setVisibility(View.GONE);
             }
             ((TextView) findViewById(R.id.approachingDirectionsText)).setText("");
             findViewById(R.id.approachingDirectionsText).setVisibility(View.GONE);
@@ -444,6 +454,11 @@ public class MapActivity extends AppCompatActivity {
                 directionGraphic = new Graphic();
             }
             mDirectionOverlay.getGraphics().add(directionGraphic);
+
+            //If the next direction maneuver is very close to the beginning of this one
+            if(GeometryEngine.contains(nextDirectionBuffer, mLocationDisplay.getLocation().getPosition())) {
+                approachingNextDirection();
+            }
         }else {
             Log.d(TAG, "Error in getting next direction");
         }
@@ -483,6 +498,7 @@ public class MapActivity extends AppCompatActivity {
     public void locateMe(View view) {
         locatingEnabled = !locatingEnabled;
         if(locatingEnabled) {
+            mMapView.setViewpointAsync(new Viewpoint(mLocationDisplay.getLocation().getPosition(), 10000));
             ((ImageButton)findViewById(R.id.locateButton)).setImageResource(R.drawable.locate_icon_enabled);
         }else {
             ((ImageButton)findViewById(R.id.locateButton)).setImageResource(R.drawable.locate_icon);
@@ -824,7 +840,7 @@ public class MapActivity extends AppCompatActivity {
 
         @Override
         public void onLocationChanged(LocationDisplay.LocationChangedEvent locationChangedEvent) {
-            if(directionsIndex != 0 && currentDirectionBuffer != null && nextDirectionBuffer != null) {
+            if(directionsIndex > 0 && currentDirectionBuffer != null && nextDirectionBuffer != null) {
                 boolean contains = GeometryEngine.contains(currentDirectionBuffer, locationChangedEvent.getLocation().getPosition());
                 boolean nextContains;
                 if(!contains) {
@@ -847,7 +863,10 @@ public class MapActivity extends AppCompatActivity {
                 }
 
                 nextContains = GeometryEngine.contains(nextDirectionBuffer, locationChangedEvent.getLocation().getPosition());
-                if(nextContains) {
+
+                //If directionsIndex > 0 then we are in the process of navigating,
+                //otherwise the navigation has ended or is not started yet
+                if(nextContains && mDirectionOverlay.getGraphics().size() < 2 && directionsIndex > 0) {
                     approachingNextDirection();
                 }
             }
@@ -865,7 +884,7 @@ public class MapActivity extends AppCompatActivity {
 
         private void locate() {
             Point lastAvgLocation = null;
-            if(lastKnownLocations.size() > 0) {
+            if(lastKnownLocations != null && lastKnownLocations.size() > 0) {
                 double avgX = 0; double avgY = 0;
                 for (int x = 0; x < lastKnownLocations.size(); x++) {
                     avgX += lastKnownLocations.get(x).getX();
