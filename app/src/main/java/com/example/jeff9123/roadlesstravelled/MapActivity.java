@@ -39,6 +39,7 @@ import com.esri.arcgisruntime.geometry.LinearUnit;
 import com.esri.arcgisruntime.geometry.LinearUnitId;
 import com.esri.arcgisruntime.geometry.Point;
 import com.esri.arcgisruntime.geometry.Polygon;
+import com.esri.arcgisruntime.geometry.ProximityResult;
 import com.esri.arcgisruntime.loadable.LoadStatus;
 import com.esri.arcgisruntime.mapping.ArcGISMap;
 import com.esri.arcgisruntime.mapping.Basemap;
@@ -397,11 +398,15 @@ public class MapActivity extends AppCompatActivity {
 
     public void approachingNextDirection() {
         if(directionsIndex >= mDirectionManeuvers.size()-2) {
+            //Reached the destination!!!
             mAddressSearchView.setQuery("", true);
         }else {
+            //Still navigating to the destination
             DirectionManeuver nextManeuver = mDirectionManeuvers.get(directionsIndex + 1);
             ((TextView) findViewById(R.id.approachingDirectionsText)).setText(nextManeuver.getDirectionText());
             findViewById(R.id.approachingDirectionsText).setVisibility(View.VISIBLE);
+
+            //Choose the right graphic for the job
             Graphic directionGraphic;
             if (nextManeuver.getGeometry().getGeometryType() == GeometryType.POINT) {
                 directionGraphic = new Graphic(nextManeuver.getGeometry(),
@@ -412,6 +417,8 @@ public class MapActivity extends AppCompatActivity {
             } else {
                 directionGraphic = new Graphic();
             }
+
+            //Add next direction graphic
             mDirectionOverlay.getGraphics().add(directionGraphic);
         }
     }
@@ -422,8 +429,12 @@ public class MapActivity extends AppCompatActivity {
             if(directionsIndex < mDirectionManeuvers.size()) {
                 double dist = 2500;
                 if(directionsIndex == mDirectionManeuvers.size()-2) {
+                    //Lower the buffer distance to be more precise when approaching the destination
                     dist = 500;
                 }
+
+                //Buffer 2500 feet for the next direction geometry
+                //Or 500 feet, if we are approaching the destination, to be more precise
                 DirectionManeuver nextManeuver = mDirectionManeuvers.get(directionsIndex+1);
                 nextDirectionBuffer = GeometryEngine.bufferGeodetic(
                         nextManeuver.getGeometry(),
@@ -436,6 +447,8 @@ public class MapActivity extends AppCompatActivity {
             findViewById(R.id.approachingDirectionsText).setVisibility(View.GONE);
             ((TextView) findViewById(R.id.directionsText)).setText(currentManeuver.getDirectionText());
             findViewById(R.id.directionsText).setVisibility(View.VISIBLE);
+
+            //Buffer 150 feet for the current direction geometry
             currentDirectionBuffer = GeometryEngine.bufferGeodetic(
                     currentManeuver.getGeometry(),
                     150,
@@ -443,6 +456,8 @@ public class MapActivity extends AppCompatActivity {
                     5.0,
                     GeodeticCurveType.GEODESIC);
             mDirectionOverlay.getGraphics().clear();
+
+            //Choose the right graphic for the job
             Graphic directionGraphic;
             if (currentManeuver.getGeometry().getGeometryType() == GeometryType.POINT) {
                 directionGraphic = new Graphic(currentManeuver.getGeometry(),
@@ -453,6 +468,8 @@ public class MapActivity extends AppCompatActivity {
             } else {
                 directionGraphic = new Graphic();
             }
+
+            //Add current direction graphic
             mDirectionOverlay.getGraphics().add(directionGraphic);
 
             //If the next direction maneuver is very close to the beginning of this one
@@ -489,9 +506,6 @@ public class MapActivity extends AppCompatActivity {
             mLocationDisplay.startAsync();
         } else {
             showToast("Location denied.");
-            /*if (!canAccessLocation()) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-            }*/
         }
     }
 
@@ -539,22 +553,18 @@ public class MapActivity extends AppCompatActivity {
     private void setupButtons() {
         findViewById(R.id.routeMeButton).setOnTouchListener((v, event) -> {
             v.setBackgroundColor(0xFF6432c8);
-            //v.performClick();
             return false;
         });
         findViewById(R.id.serviceButton).setOnTouchListener((v, event) -> {
             v.setBackgroundColor(0xFF6432c8);
-            //v.performClick();
             return false;
         });
         findViewById(R.id.clearTrackedButton).setOnTouchListener((v, event) -> {
             v.setBackgroundColor(0xFF6432c8);
-            //v.performClick();
             return false;
         });
         findViewById(R.id.clearRoutesButton).setOnTouchListener((v, event) -> {
             v.setBackgroundColor(0xFF6432c8);
-            //v.performClick();
             return false;
         });
     }
@@ -604,7 +614,6 @@ public class MapActivity extends AppCompatActivity {
         List<Stop> stops = new ArrayList<>();
         try {
             Stop currentLoc = new Stop(startPoint);
-            //Stop currentLoc = new Stop(mLocationDisplay.getLocation().getPosition());
             currentLoc.setName("current location");
             stops.add(currentLoc);
             Stop destination = new Stop(endPoint);
@@ -712,8 +721,6 @@ public class MapActivity extends AppCompatActivity {
             if(result.success) {
                 for (int x = 0; x < mWeakActivity.get().mRouteOverlays.size(); x++) {
                     mWeakActivity.get().getMapView().getGraphicsOverlays().remove(mWeakActivity.get().mRouteOverlays.get(x));
-                    //mRouteOverlays.get(x).setOpacity(mRouteOverlays.get(x).getOpacity() / 2); ADD THIS BACK IN IF YOU WANT TO SHOW OLD ROUTES WITH TRANSPARENCY
-                    //mWeakActivity.get().getMapView().getGraphicsOverlays().add(0, mRouteOverlays.get(x)); ^^^
                 }
                 GraphicsOverlay routeOverlay = new GraphicsOverlay();
                 routeOverlay.getGraphics().add(
@@ -869,6 +876,20 @@ public class MapActivity extends AppCompatActivity {
                 if(nextContains && mDirectionOverlay.getGraphics().size() < 2 && directionsIndex > 0) {
                     approachingNextDirection();
                 }
+
+                Point nearPoint = GeometryEngine.nearestCoordinate(
+                        mDirectionManeuvers.get(directionsIndex+1).getGeometry(),
+                        locationChangedEvent.getLocation().getPosition()).getCoordinate();
+                GeodeticDistanceResult geodeticDistanceResult = GeometryEngine.distanceGeodetic(
+                        locationChangedEvent.getLocation().getPosition(),
+                        nearPoint,
+                        new LinearUnit(LinearUnitId.MILES),
+                        new AngularUnit(AngularUnitId.DEGREES),
+                        GeodeticCurveType.GEODESIC);
+                ((TextView)findViewById(R.id.directionsText)).setText(
+                        String.format("%s for %.2f Miles",
+                                mDirectionManeuvers.get(directionsIndex).getDirectionText(),
+                                geodeticDistanceResult.getDistance()));
             }
 
             if(findViewById(R.id.loadingSpinner).getVisibility() == View.GONE
