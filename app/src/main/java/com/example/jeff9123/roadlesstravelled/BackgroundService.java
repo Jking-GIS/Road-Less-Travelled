@@ -39,14 +39,16 @@ public class BackgroundService extends Service {
                     PendingIntent pendingIntent = PendingIntent.getActivity(getApplicationContext(), 0, intent, 0);
 
                     LocationRepository mRepository = new LocationRepository(getApplication());
+                    TimeUnit.SECONDS.sleep(60);
                     while(running) {
-                        TimeUnit.SECONDS.sleep(60);
                         Location mLocation = new Location("past " + System.currentTimeMillis(),
                                 mLocationDisplay.getLocation().getPosition().getY(),
                                 mLocationDisplay.getLocation().getPosition().getX());
                         if(mRepository.locationNotExists(mLocation.getLocation())) {
                             mRepository.insert(mLocation);
                         }
+
+                        TimeUnit.SECONDS.sleep(60);
                     }
 
                     /*NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(getApplicationContext(), getString(R.string.notification_channel_id))
